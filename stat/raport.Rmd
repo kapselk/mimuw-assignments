@@ -1,0 +1,428 @@
+---
+title: "Analiza cech fizycznych i osiągnięć sportowych uczniów"
+author: "Kacper Omieliańczyk (459459)"
+date: "2025-01-15"
+output:
+  pdf_document:
+    keep_tex: true
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Wprowadzanie
+
+Sport od zawsze odgrywał istotną rolę w moim życiu, szczególnie w okresie nastoletnim, kiedy to kształtował mój charakter, dyscyplinę oraz determinację. Aktywność fizyczna była nie tylko sposobem na spędzanie czasu, ale również przestrzenią do rozwijania umiejętności współpracy i rywalizacji. Wspomnienia tamtych lat niosą ze sobą ogromny sentyment, a myśl o możliwości dzielenia się wiedzą i doświadczeniem z innymi – być może jako trener – zawsze budziła we mnie szczególny rodzaj inspiracji. To właśnie ten sentyment i fascynacja światem sportu stanowią główną motywację do przeprowadzenia niniejszej analizy, która pozwala mi połączyć pasję do nauki i sportu w jedno spójne działanie.
+
+Dataset został pobrany z repozytorium Mendeley Data, gdzie został udostępniony w ramach pracy naukowej dotyczącej czynników wpływających na wydolność fizyczną dzieci i młodzieży. Dane te zawierają informacje o zmiennych demograficznych, antropometrycznych oraz wynikach testów fizycznych, co czyni je idealnym źródłem do analizy zróżnicowania zdolności fizycznych w zależności od różnych czynników, takich jak płeć, wiek czy wskaźniki masy ciała. Szczegóły dotyczące zbioru można znaleźć pod adresem: [Mendeley Data](https://data.mendeley.com/datasets/j3htgdk4pn/4).
+
+
+```{r load_data, include=FALSE}
+library(dplyr)
+library(tidyr)
+library(readr)
+library(stringr)
+library(ggplot2)
+library(MASS) # Dopasowanie rozkładów\
+library(Hmisc) # Pakiet do obliczania przedziałów ufności Wilsona
+library(grid)
+library(gridExtra)
+library(fitdistrplus) # Narzędzie do dopasowania różnych rozkładów
+data <- read_delim("DATA_STUDENTS.csv", delim = ";", 
+    escape_double = FALSE, trim_ws = TRUE)
+```
+
+```{r echo=FALSE, results='hide'}
+# Liczba obserwacji
+n_obs <- nrow(data)
+n_vars <- ncol(data)
+# list(Liczba_obserwacji = n_obs)
+```
+
+```{r setup-hook, echo=FALSE}
+hook_in <- function(x, options) {
+    x <- x[!grepl("^#\\s+", x)]
+    paste0("```r\n",
+          paste0(x, collapse="\n"),
+          "\n```")
+}
+knitr::knit_hooks$set(source = hook_in)
+```
+
+# Analiza danych
+
+Liczba obserwacji wynosi **`r n_obs`**, natomiast liczba zmiennych to **`r n_vars`**.
+
+### Informacje o zmiennych
+- **ID**: Unikalny identyfikator obserwacji.
+- **Age**: Wiek dziecka w latach.
+- **Gender**: Płeć (male/female).
+- **Weight**: Waga w kilogramach.
+- **Height**: Wzrost w centymetrach.
+- **BMI**: Wskaźnik masy ciała (Body Mass Index).
+- **Speed**: Szybkość mierzona w metrach na sekundę.
+- **Jump**: Długość skoku w centymetrach.
+
+### Brakujące dane
+Poniższa tabela przedstawia liczbę brakujących danych w każdej zmiennej.
+```{r echo=FALSE, results='asis'}
+# Brakujące dane
+brakujace <- data %>% summarise_all(~sum(is.na(.)))
+kable(brakujace, caption='Brakujące dane w zbiorze danych.')
+```
+
+## Podstawowe statystyki zmiennych
+
+### Statystyki dla zmiennych ciągłych
+Podstawowe statystyki dla zmiennych ciągłych zostały przedstawione w tabeli:
+
+```{r echo=FALSE, results='asis'}
+# Statystyki ciągłe w formacie dwuwymiarowym
+colnames(data) <- colnames(data) %>% str_replace("Age_Y", "Age")  %>% str_replace("Speed_m/s", "Speed")  %>% str_replace("Jump _distance_cm", "Jump")
+
+stat_cont <- data %>% 
+  summarise(
+    Age_min = min(Age, na.rm = TRUE),
+    Age_max = max(Age, na.rm = TRUE),
+    Age_mean = mean(Age, na.rm = TRUE),
+    Age_median = median(Age, na.rm = TRUE),
+    Age_sd = sd(Age, na.rm = TRUE),
+
+    Weight_min = min(Weight_Kg, na.rm = TRUE),
+    Weight_max = max(Weight_Kg, na.rm = TRUE),
+    Weight_mean = mean(Weight_Kg, na.rm = TRUE),
+    Weight_median = median(Weight_Kg, na.rm = TRUE),
+    Weight_sd = sd(Weight_Kg, na.rm = TRUE),
+
+    Height_min = min(Height_cm, na.rm = TRUE),
+    Height_max = max(Height_cm, na.rm = TRUE),
+    Height_mean = mean(Height_cm, na.rm = TRUE),
+    Height_median = median(Height_cm, na.rm = TRUE),
+    Height_sd = sd(Height_cm, na.rm = TRUE),
+
+    BMI_min = min(BMI, na.rm = TRUE),
+    BMI_max = max(BMI, na.rm = TRUE),
+    BMI_mean = mean(BMI, na.rm = TRUE),
+    BMI_median = median(BMI, na.rm = TRUE),
+    BMI_sd = sd(BMI, na.rm = TRUE),
+
+    Speed_min = min(Speed, na.rm = TRUE),
+    Speed_max = max(Speed, na.rm = TRUE),
+    Speed_mean = mean(Speed, na.rm = TRUE),
+    Speed_median = median(Speed, na.rm = TRUE),
+    Speed_sd = sd(Speed, na.rm = TRUE),
+
+    Jump_min = min(Jump, na.rm = TRUE),
+    Jump_max = max(Jump, na.rm = TRUE),
+    Jump_mean = mean(Jump, na.rm = TRUE),
+    Jump_median = median(Jump, na.rm = TRUE),
+    Jump_sd = sd(Jump, na.rm = TRUE)
+  ) %>% 
+  pivot_longer(everything(), names_to = c("Variable", ".value"), names_sep = "_")
+kable(stat_cont)
+```
+
+### Statystyki dla zmiennych jakościowych
+Poniższa tabela przedstawia liczność obserwacji w zależności od płci.
+
+```{r echo=FALSE, results='asis'}
+# Statystyki jakościowe
+stat_cat <- data %>% 
+  group_by(Gender) %>% 
+  summarise(Liczebnosc = n())
+kable(stat_cat, caption='Liczności dla zmiennej Gender.')
+```
+
+## Analiza porównawcza zmiennych ciągłych według płci
+
+### Wykresy rozkładów
+Wykresy przedstawiają rozkłady zmiennych **Speed** i **Jump** w podziale na płeć.
+
+```{r echo=FALSE}
+
+# Wykres dla Speed_m/s
+plot_speed <- ggplot(data, aes(x = Gender, y = Speed, fill = Gender)) +
+  geom_boxplot() +
+  labs(title = "Rozkład Speed w podziale na płeć", x = "Płeć", y = "Speed (m/s)") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# Wykres dla Jump
+plot_jump <- ggplot(data, aes(x = Gender, y = Jump, fill = Gender)) +
+  geom_boxplot() +
+  labs(title = "Rozkład Jump w podziale na płeć", x = "Płeć", y = "Jump Distance (cm)") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+plot_speed
+plot_jump
+```
+
+### Statystyki opisowe w podziale na płeć
+Tabela przedstawia pełne statystyki opisowe zmiennych **Speed** i **Jump** w podziale na płeć. Dla lepszej czytelności podzielono statystyki na dwie tabele.
+
+#### Statystyki dla zmiennej Speed_m/s
+```{r echo=FALSE, results='asis'}
+stats_speed <- data %>%
+  group_by(Gender) %>%
+  summarise(
+    Średnia = mean(Speed, na.rm = TRUE),
+    Mediana = median(Speed, na.rm = TRUE),
+    Min = min(Speed, na.rm = TRUE),
+    Max = max(Speed, na.rm = TRUE),
+    Odchylenie = sd(Speed, na.rm = TRUE)
+  )
+kable(stats_speed)
+```
+**Tabela 2**: Statystyki zmiennej Speed w podziale na płeć.
+
+#### Statystyki dla zmiennej Jump_distance_cm
+```{r echo=FALSE, results='asis'}
+stats_jump <- data %>%
+  group_by(Gender) %>%
+  summarise(
+    Średnia = mean(Jump, na.rm = TRUE),
+    Mediana = median(Jump, na.rm = TRUE),
+    Min = min(Jump, na.rm = TRUE),
+    Max = max(Jump, na.rm = TRUE),
+    Odchylenie = sd(Jump, na.rm = TRUE)
+  )
+kable(stats_jump)
+```
+**Tabela 3**: Statystyki zmiennej Jump w podziale na płeć.
+
+## Analiza zależności między długością skoku a czasem biegu
+
+### Wykres kropkowy z prostą regresji liniowej
+Zależność między zmiennymi **Jump** (długość skoku) i **Speed** (szybkość biegu) została przedstawiona na wykresie poniżej. Oddzielnie zaznaczono dane oraz dopasowania regresji liniowej dla kobiet i mężczyzn.
+
+```{r echo=FALSE}
+# Wykres kropkowy z regresją liniową
+plot_regression <- ggplot(data, aes(x = Speed, y = Jump, color = Gender)) +
+  geom_point(alpha = 0.7) +
+  geom_smooth(data = data %>% filter(Gender == "female"), formula = y ~ x, method = "lm", se = FALSE, color = "darkred") +
+  geom_smooth(data = data %>% filter(Gender == "male"), formula = y ~ x, method = "lm", se = FALSE, color = "darkblue") +
+  scale_color_manual(values = c("female" = "red", "male" = "blue")) +
+  labs(
+    title = "Zależność między długością skoku a czasem biegu",
+    x = "Szybkość",
+    y = "Długość skoku",
+    color = "Płeć"
+  ) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+plot_regression
+```
+
+Czy dopasowanie wydaje się rozsądne?
+Prosta regresji dla mężczyzn wydaje się dość dobrze dopasowana do danych. Punkty na wykresie pokazują wyraźną liniową tendencję wzrostową.
+W przypadku kobiet dopasowanie prostej również oddaje ogólną tendencję wzrostową, ale jest bardziej rozproszone. Widać większy rozrzut punktów, co może sugerować, że prosty model liniowy nie jest idealny.
+W obu przypadkach rozrzut punktów poza linią wskazuje, że istnieje pewna nieliniowość w zależności.
+
+### Wykres kropkowy z dopasowaniem wielomianowym
+Dla bardziej precyzyjnej analizy zależności między zmiennymi przedstawiono dopasowanie modelu wielomianowego drugiego stopnia dla każdej z grup (kobiety i mężczyźni) na osobnych wykresach.
+
+```{r echo=FALSE}
+# Wykres dla kobiet
+plot_poly_female <- ggplot(data %>% filter(Gender == "female"), aes(x = `Speed`, y = Jump)) +
+  geom_point(alpha = 0.7, color = "red") +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 2), se = FALSE, color = "darkred") +
+  labs(
+    x = "Szybkość (m/s)",
+    y = "Długość skoku (cm)"
+  ) +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+
+# Wykres dla mężczyzn
+plot_poly_male <- ggplot(data %>% filter(Gender == "male"), aes(x = `Speed`, y = Jump)) +
+  geom_point(alpha = 0.7, color = "blue") +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 2), se = FALSE, color = "darkblue") +
+  labs(
+    x = "Szybkość (m/s)",
+    y = "Długość skoku (cm)"
+  ) +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+
+# Wyświetlenie obok siebie z wspólnym tytułem
+
+grid.arrange(
+  arrangeGrob(
+    plot_poly_female, plot_poly_male, 
+    ncol = 2,
+    top = textGrob(
+      "Dopasowanie wielomianowe (stopień 2) między długością skoku a czasem biegu",
+      gp = gpar(fontsize = 12, fontface = "bold")
+    )
+  )
+)
+```
+Dopasowanie trendu u mężczyzn wydaje się znaczące, wskazując na wyraźną zależność między analizowanymi zmiennymi. Natomiast w przypadku kobiet dane wykazują zbyt duże rozproszenie, co znacząco utrudnia stworzenie precyzyjnego modelu regresji.
+
+## Dopasowanie rozkładu prawdopodobieństwa dla zmiennej BMI
+
+Dla zmiennej **BMI** oddzielnie dla mężczyzn i kobiet dopasowano rozkład log-normalny metodą największej wiarogodności. Wyniki przedstawiono poniżej.
+
+
+### Analiza dla kobiet
+```{r echo=FALSE}
+
+# Filtr danych dla kobiet
+data_female <- data %>% filter(Gender == "female")
+
+# Dopasowanie rozkładu log-normalnego
+fit_lognormal <- fitdist(data_female$BMI, "lnorm")
+mu_log <- fit_lognormal$estimate["meanlog"]
+sd_log <- fit_lognormal$estimate["sdlog"]
+
+# Wykres QQ-plot
+qqplot_lognormal <- function(data, mu_log, sd_log) {
+  qqnorm(log(data), main = "QQ-plot dla BMI kobiet (log-normal)")
+  qqline(log(data), col = "red")
+}
+qqplot_lognormal(data_female$BMI, mu_log, sd_log)
+
+# Histogram z dopasowaną gęstością
+hist(data_female$BMI, probability = TRUE, main = "Histogram BMI kobiet z dopasowaną gęstością log-normalną", xlab = "BMI", col = "lightblue")
+x_vals <- seq(min(data_female$BMI), max(data_female$BMI), length.out = 100)
+lines(x_vals, dlnorm(x_vals, meanlog = mu_log, sdlog = sd_log), col = "red", lwd = 2)
+
+# Test Kołmogorowa-Smirnowa
+data_female$BMI_adjusted <- data_female$BMI + runif(length(data_female$BMI), -1e-6, 1e-6)
+ks_test_female <- ks.test(data_female$BMI_adjusted, "plnorm", meanlog = mu_log, sdlog = sd_log)
+
+# Wyświetlenie wartości p-value
+ks_female_p_value <- ifelse(ks_test_female$p.value < 0.05, "< 0.05", round(ks_test_female$p.value, 4))
+```
+
+### Analiza dla mężczyzn
+```{r echo=FALSE} 
+# Filtr danych dla mężczyzn
+data_male <- data %>% filter(Gender == "male")
+
+# Dopasowanie rozkładu log-normalnego
+fit_lognormal_male <- fitdist(data_male$BMI, "lnorm")
+mu_log_male <- fit_lognormal_male$estimate["meanlog"]
+sd_log_male <- fit_lognormal_male$estimate["sdlog"]
+
+# Wykres QQ-plot
+qqplot_lognormal_male <- function(data, mu_log, sd_log) {
+  qqnorm(log(data), main = "QQ-plot dla BMI mężczyzn (log-normal)")
+  qqline(log(data), col = "blue")
+}
+qqplot_lognormal_male(data_male$BMI, mu_log_male, sd_log_male)
+
+# Histogram z dopasowaną gęstością
+hist(data_male$BMI, probability = TRUE, main = "Histogram BMI mężczyzn z dopasowaną gęstością log-normalną", xlab = "BMI", col = "lightblue")
+x_vals <- seq(min(data_male$BMI), max(data_male$BMI), length.out = 100)
+lines(x_vals, dlnorm(x_vals, meanlog = mu_log_male, sdlog = sd_log_male), col = "blue", lwd = 2)
+
+# Test Kołmogorowa-Smirnowa
+data_male$BMI_adjusted <- data_male$BMI + runif(length(data_male$BMI), -1e-6, 1e-6)  ### usuwanie ties / nie wpływa na wynik
+ks_test_male <- ks.test(data_male$BMI_adjusted, "plnorm", meanlog = mu_log_male, sdlog = sd_log_male)
+
+# Wyświetlenie wartości p-value
+ks_male_p_value <- ifelse(ks_test_male$p.value < 0.05, "< 0.05", round(ks_test_male$p.value, 4))
+```
+
+**Komentarz:**
+Dla testu kobiet uzyskano $p$-wartość: `r ks_female_p_value`, oraz dla mężczyzn $p$-wartość: `r ks_male_p_value`.
+
+Mimo wybrania rozkładu log-normalnego, dopasowanie nie spełnia założeń przyjętego poziomu istotności, co wynika z prawoskośnego charakteru rozkładu BMI. Niestety, nie udało się znaleźć dokładnego sposobu dopasowania tego typu danych. Przeszukując źródła, natrafiłem jednak na pracę, która porusza ten problem: [link](https://www.scirp.org/journal/paperinformation?paperid=117728).
+
+## Szacowanie prawdopodobieństwa występowania płci z przedziałem ufności
+
+Poniżej oszacowano prawdopodobieństwo występowania każdej wartości zmiennej jakościowej **Gender** (płeć) wraz z 99% przedziałami ufności Wilsona.
+
+### Wyniki dla zmiennej Gender
+```{r echo=FALSE}
+
+# Liczności płci
+gender_counts <- table(data$Gender)
+
+# Całkowita liczba obserwacji
+n_total <- sum(gender_counts)
+
+# Funkcja obliczająca przedział Wilsona
+table_gender <- data.frame(
+  Gender = names(gender_counts),
+  Count = as.numeric(gender_counts),
+  Probability = as.numeric(gender_counts) / n_total
+)
+table_gender <- within(table_gender, {
+  Wilson_Lower <- binconf(x = Count, n = n_total, method = "wilson", alpha = 0.01)[, 2]
+  Wilson_Upper <- binconf(x = Count, n = n_total, method = "wilson", alpha = 0.01)[, 3]
+})
+
+# Wyświetlenie wyników w tabeli
+kable(table_gender, col.names = c("Płeć", "Liczność", "Prawdopodobieństwo", "Dolny 99% PU", "Górny 99% PU"),
+      caption = "Prawdopodobieństwa występowania płci z 99% przedziałem ufności Wilsona.")
+```
+
+## Regresja liniowa z uwzględnieniem zmiennej jakościowej
+
+Przeprowadzono regresję liniową zmiennej **Speed** względem zmiennych **Age**, **BMI**, **Jump distance** oraz **Gender** (skonwertowanej do zmiennej jakościowej). Uzyskane wyniki zebrano w tabeli:
+
+### Wyniki analizy
+```{r echo=FALSE}
+# Konwersja zmiennej Gender na factor
+data$Gender <- as.factor(data$Gender)
+
+# Model regresji liniowej
+model <- lm(Speed~ Age + BMI + Jump + Gender, data = data)
+
+# Wyświetlenie współczynników
+summary_model <- summary(model)
+kable(as.data.frame(summary_model$coefficients),
+      col.names = c("Estymacja", "Std. Błąd", "t-wartość", "Pr(>|t|)"),
+      caption = "Współczynniki regresji dla modelu uwzględniającego płeć.")
+
+# Obliczenie błędu średniokwadratowego
+mse <- mean(summary_model$residuals^2)
+```
+Uzyskany błąd średniokwadratowy wynosi `r round(mse, 4)`. Z tabeli wyczytujemy $p$-wartości, z których przy ustalonym poziomie istotności $\alpha = 0.01$ wynika, że wszystkie zmienne poza BMI są statystycznie istotne.
+
+## Testowanie hipotez statystycznych
+
+W celu sprawdzenia zależności między zmiennymi sformułowano i przetestowano dwie hipotezy statystyczne.
+
+### Hipoteza 1: Czy średnia szybkość (Speed) różni się istotnie między płciami?
+
+Istnieje pewna grupa społeczna, która stara się nie dostrzegać różnic w wydolności fizycznej między kobietami a mężczyznami. Z tego powodu ciekawym wydaje się przetestowanie, kto ma rację: oni czy zdrowy rozsądek?
+
+#### Sformułowanie hipotezy
+- Hipoteza zerowa (\(H_0\)): Średnia szybkość jest taka sama dla kobiet i mężczyzn.
+- Hipoteza alternatywna (\(H_A\)): Średnia szybkość różni się między kobietami a mężczyznami.
+
+#### Test t-Studenta
+```{r echo=FALSE}
+# Test t-Studenta
+speed_by_gender <- t.test(Speed ~ Gender, data = data)
+t_stat <- round(speed_by_gender$statistic, 4)
+t_pval <- ifelse(speed_by_gender$p.value < 0.05, "< 0.05", round(speed_by_gender$p.value, 4))
+t_conf <- paste0("[", round(speed_by_gender$conf.int[1], 4), ", ", round(speed_by_gender$conf.int[2], 4), "]")
+```
+
+**Wyniki testu t-studenta**: Statystyka: `r t_stat` ; $p$-wartość: `r t_pval` ; przedział ufności (99%): `r t_conf`
+
+### Hipoteza 2: Czy długość skoku (Jump distance) koreluje istotnie z wiekiem (Age)?
+
+#### Sformułowanie hipotezy
+- Hipoteza zerowa (\(H_0\)): Nie ma korelacji między długością skoku a wiekiem.
+- Hipoteza alternatywna (\(H_A\)): Istnieje istotna korelacja między długością skoku a wiekiem.
+
+#### Test korelacji Pearsona
+```{r echo=FALSE}
+# Test korelacji Pearsona
+cor_test <- cor.test(data$Jump, data$Age, method = "pearson")
+cor_est <- round(cor_test$estimate, 4)
+cor_pval <- ifelse(cor_test$p.value < 0.05, "< 0.05", round(cor_test$p.value, 4))
+cor_conf <- paste0("[", round(cor_test$conf.int[1], 4), ", ", round(cor_test$conf.int[2], 4), "]")
+```
+
+**Wyniki testu korelacji Pearsona**: Estymacja korelacji: `r cor_est` ; $p$-wartość: `r cor_pval` ; przedział ufności (99%): `r cor_conf`
+
+### Podsumowanie wyników testów
+- Płeć istotnie wpływa na średnią szybkość dzieci, co może być związane z różnicami biologicznymi lub innymi cechami płciowymi.
+- Wiek jest umiarkowanie związany z długością skoku, co sugeruje, że starsze dzieci mają większe zdolności motoryczne lub siłę, umożliwiające dłuższe skoki.
+- Oba wyniki wskazują na istotne statystycznie różnice i zależności, co warto uwzględnić w dalszych analizach.
+
